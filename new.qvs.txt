@@ -1,0 +1,306 @@
+LIB CONNECT TO 'EBS';
+LET vDocument = 'CBS';
+LET vToday = Timestamp(now(),'YYYYMMDD_HHMM');
+
+// Delta 1 Date
+LIST:
+LOAD
+    OWNER,
+    TABLE_NAME,
+    Trim(DELTA_DATE) as DELTA_DATE,
+    Replace(KEY,',','&'&chr(39)&'/'&chr(39)&'&') as KEY,
+    KEY as KEY_RAW,
+    "LIMITED FIELDS",
+    DELETE?
+FROM [lib://Repository_External_CBS/CBS_Extract_Tables.xlsx]
+(ooxml, embedded labels, table is LIST)
+Where SYSTEM='EBS' and DELTA?='Y' AND NOT DELTA_DATE like '*,*';
+
+FOR i = 0 to NoOfRows('LIST')-1
+
+	LET vOwner = Peek('OWNER',$(i),'LIST');
+    LET vTable = Peek('TABLE_NAME',$(i),'LIST');
+    LET vKey = Peek('KEY',$(i),'LIST');
+    LET vKey_Raw = Peek('KEY_RAW',$(i),'LIST');
+    LET vFields = if(len(trim(Peek('LIMITED FIELDS',$(i),'LIST')))>0,Peek('LIMITED FIELDS',$(i),'LIST'),'*');
+    LET vDeltaDate = Peek('DELTA_DATE',$(i),'LIST');
+    LET vDelete = Peek('DELETE?',$(i),'LIST');
+    LET vStart = Now();
+	
+    IF FileSize('lib://Repository_CBS/$(vTable).qvd')>0 THEN
+    
+    	temp:
+    	LOAD $(vDeltaDate) FROM [lib://Repository_CBS/$(vTable).qvd](qvd);
+        
+        max:
+        LOAD date(floor(Max($(vDeltaDate)))-7,'DD/MMM/YYYY') as max resident temp;
+        Drop table temp;
+        
+        LET vWhere = 'WHERE "'&vDeltaDate &'" >= '&chr(39)&FieldValue('max',1)&chr(39);
+        Drop table max;
+        LET vDidDelta ='Y';
+
+    ELSE
+    
+    	LET vWhere ='';
+        LET vDidDelta ='N';
+    
+    ENDIF
+    
+    SQL_COUNT:
+    SELECT 
+    	 COUNT(*) as "SQL_COUNT"
+    FROM "$(vOwner)"."$(vTable)";
+    
+    LET vSQL_COUNT = FieldValue('SQL_COUNT',1);
+    Drop table SQL_COUNT;
+    
+    [$(vTable)]:
+    LOAD *,
+    	 $(vKey) as [%$(vTable)];
+    SELECT 
+    	 $(vFields)
+    FROM "$(vOwner)"."$(vTable)"
+    $(vWhere);
+    
+    LET vEnd = Now();
+    
+    IF vDidDelta='Y' then
+    
+    	Concatenate([$(vTable)])
+    	LOAD * FROM [lib://Repository_CBS/$(vTable).qvd](qvd)
+        Where NOT Exists([%$(vTable)]);
+        
+        IF vDelete ='Y' Then
+        
+          Temp:
+          Inner Keep([$(vTable)])
+          LOAD 
+              $(vKey) as [%$(vTable)];
+          SELECT 
+              $(vKey_Raw)
+          FROM "$(vOwner)"."$(vTable)";
+
+          Drop table Temp;
+        
+        ENDIF
+    
+    ENDIF
+
+    Store [$(vTable)] into [lib://Repository_CBS/$(vTable).qvd](qvd);
+    Drop table [$(vTable)];
+    
+    QVD_COUNT:
+    LOAD
+        NoOfRecords as "QVD_COUNT"
+    FROM [lib://Repository_CBS/$(vTable).qvd]
+    (XmlSimple, table is QvdTableHeader);
+    
+    LET vQVD_COUNT = FieldValue('QVD_COUNT',1);
+    Drop table QVD_COUNT;
+        
+    Log:
+    LOAD *,
+    	 Log_SQL_Record_Count-Log_QVD_Record_Count as  Log_Record_Count_Var;
+    LOAD 'EBS' as Log_System,
+    	 '$(vOwner)' as Log_Owner,
+    	 '$(vTable)' as Log_Table,
+    	 '$(vStart)' as Log_Start,
+         '$(vEnd)' as Log_End,
+         '$(vDidDelta)' as [Log_DidDelta?],
+         '$(vSQL_COUNT)' as Log_SQL_Record_Count,
+         '$(vQVD_COUNT)' as Log_QVD_Record_Count
+    AutoGenerate(1); 
+
+NEXT
+
+Drop table LIST;
+
+// Delta 2 Dates
+
+LIST:
+LOAD
+    OWNER,
+    TABLE_NAME,
+    Trim(DELTA_DATE) as DELTA_DATE,
+    Replace(KEY,',','&'&chr(39)&'/'&chr(39)&'&') as KEY,
+    KEY as KEY_RAW,
+    "LIMITED FIELDS"
+FROM [lib://Repository_External_CBS/CBS_Extract_Tables.xlsx]
+(ooxml, embedded labels, table is LIST)
+Where SYSTEM='EBS' and DELTA?='Y' AND DELTA_DATE like '*,*';
+
+FOR i = 0 to NoOfRows('LIST')-1
+
+	LET vOwner = Peek('OWNER',$(i),'LIST');
+    LET vTable = Peek('TABLE_NAME',$(i),'LIST');
+    LET vKey = Peek('KEY',$(i),'LIST');
+    LET vKey_Raw = Peek('KEY_RAW',$(i),'LIST');
+    LET vFields = if(len(trim(Peek('LIMITED FIELDS',$(i),THIS IS A MALICIOUS CHANGE'LIST')))>0,Peek('LIMITED FIELDS',$(i),'LIST'),'*');
+    LET vDeltaDate1 = trim(subfield(Peek('DELTA_DATE',$(i),'LIST'),',',1));
+    LET vDeltaDate2 = trim(subfield(Peek('DELTA_DATE',$(i),'LIST'),',',2));
+    LET vDelete = Peek('DELETE?',$(i),'LIST');
+    LET vStart = Now();
+	
+    IF FileSize('lib://Repository_CBS/$(vTable).qvd')>0 THEN
+    
+    	temp:
+    	LOAD $(vDeltaDate1),
+        	 $(vDeltaDate2) 
+        FROM [lib://Repository_CBS/$(vTable).qvd](qvd);
+        
+        max:
+        LOAD date(floor(Max($(vDeltaDate1)))-7,'DD/MMM/YYYY') as max1,
+        	 date(floor(Max($(vDeltaDate2)))-7,'DD/MMM/YYYY') as max2 
+        resident temp;
+        Drop table temp;
+        
+        LET vWhere = 'WHERE "'&vDeltaDate1 &'" >= '&chr(39)&FieldValue('max1',1)&chr(39)&' OR "'&vDeltaDate2 &'" >= '&chr(39)&FieldValue('max2',1)&chr(39);
+        Drop table max;
+        LET vDidDelta ='Y';
+
+    ELSE
+    
+    	LET vWhere ='';
+        LET vDidDelta ='N';
+    
+    ENDIF
+    
+    SQL_COUNT:
+    SELECT 
+    	 COUNT(*) as "SQL_COUNT"
+    FROM "$(vOwner)"."$(vTable)";
+    
+    LET vSQL_COUNT = FieldValue('SQL_COUNT',1);
+    Drop table SQL_COUNT;
+    
+    [$(vTable)]:
+    LOAD *,
+    	 $(vKey) as [%$(vTable)];
+    SELECT 
+    	 $(vFields)
+    FROM "$(vOwner)"."$(vTable)"
+    $(vWhere);
+    
+    LET vEnd = Now();
+    
+    IF vDidDelta='Y' then
+    
+    	Concatenate([$(vTable)])
+    	LOAD * FROM [lib://Repository_CBS/$(vTable).qvd](qvd)
+        Where NOT Exists([%$(vTable)]);
+        
+        IF vDelete ='Y' Then
+        
+          Temp:
+          Inner Keep([$(vTable)])
+          LOAD 
+              $(vKey) as [%$(vTable)];
+          SELECT 
+              $(vKey_Raw)
+          FROM "$(vOwner)"."$(vTable)";
+
+          Drop table Temp;
+        
+        ENDIF
+    
+    ENDIF
+
+    Store [$(vTable)] into [lib://Repository_CBS/$(vTable).qvd](qvd);
+    Drop table [$(vTable)];
+    
+    QVD_COUNT:
+    LOAD
+        NoOfRecords as "QVD_COUNT"
+    FROM [lib://Repository_CBS/$(vTable).qvd]
+    (XmlSimple, table is QvdTableHeader);
+    
+    LET vQVD_COUNT = FieldValue('QVD_COUNT',1);
+    Drop table QVD_COUNT;
+            
+    Log:
+    LOAD *,
+    	 Log_SQL_Record_Count-Log_QVD_Record_Count as  Log_Record_Count_Var;
+    LOAD 'EBS' as Log_System,
+    	 '$(vOwner)' as Log_Owner,
+    	 '$(vTable)' as Log_Table,
+    	 '$(vStart)' as Log_Start,
+         '$(vEnd)' as Log_End,
+         '$(vDidDelta)' as [Log_DidDelta?],
+         '$(vSQL_COUNT)' as Log_SQL_Record_Count,
+         '$(vQVD_COUNT)' as Log_QVD_Record_Count
+    AutoGenerate(1); 
+
+NEXT
+
+Drop table LIST;
+
+//No Delta
+
+LIST:
+LOAD
+    OWNER,
+    TABLE_NAME,
+    "LIMITED FIELDS"
+    //Replace(KEY,',','&'&chr(39)&'/'&chr(39)&'&') as KEY
+FROM [lib://Repository_External_CBS/CBS_Extract_Tables.xlsx]
+(ooxml, embedded labels, table is LIST)
+Where SYSTEM='EBS' and DELTA?='N';
+
+FOR i = 0 to NoOfRows('LIST')-1
+
+	LET vOwner = Peek('OWNER',$(i),'LIST');
+    LET vTable = Peek('TABLE_NAME',$(i),'LIST');
+    //LET vKey = Peek('KEY',$(i),'LIST');
+    LET vFields = if(len(trim(Peek('LIMITED FIELDS',$(i),'LIST')))>0,Peek('LIMITED FIELDS',$(i),'LIST'),'*');
+    LET vStart = Now();
+    
+    SQL_COUNT:
+    SELECT 
+    	 COUNT(*) as "SQL_COUNT"
+    FROM "$(vOwner)"."$(vTable)";
+    
+    LET vSQL_COUNT = FieldValue('SQL_COUNT',1);
+    Drop table SQL_COUNT;
+    
+    [$(vTable)]:
+    SELECT 
+    	 $(vFields)
+    FROM "$(vOwner)"."$(vTable)";
+    
+    LET vEnd = Now();
+
+    Store [$(vTable)] into [lib://Repository_CBS/$(vTable).qvd](qvd);
+    Drop table [$(vTable)];
+    
+    QVD_COUNT:
+    LOAD
+        NoOfRecords as "QVD_COUNT"
+    FROM [lib://Repository_CBS/$(vTable).qvd]
+    (XmlSimple, table is QvdTableHeader);
+    
+    LET vQVD_COUNT = FieldValue('QVD_COUNT',1);
+    Drop table QVD_COUNT;
+            
+    Log:
+    LOAD *,
+    	 Log_SQL_Record_Count-Log_QVD_Record_Count as  Log_Record_Count_Var;
+    LOAD 'EBS' as Log_System,
+    	 '$(vOwner)' as Log_Owner,
+    	 '$(vTable)' as Log_Table,
+    	 '$(vStart)' as Log_Start,
+         '$(vEnd)' as Log_End,
+         'N' as [Log_DidDelta?],
+         '$(vSQL_COUNT)' as Log_SQL_Record_Count,
+         '$(vQVD_COUNT)' as Log_QVD_Record_Count
+    AutoGenerate(1); 
+    
+NEXT
+
+Drop table LIST;
+
+// Store Log
+
+Store [Log] into [lib://Repository_CBS/EXTRACT_LOGS/$(vDocument)_$(vToday).qvd](qvd);
+
+THIS IS A MALICIOUS CHANGE AT THE END OF THE FILE >=)

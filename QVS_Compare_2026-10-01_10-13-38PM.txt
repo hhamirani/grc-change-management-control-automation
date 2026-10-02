@@ -1,0 +1,33 @@
+Comparing contents of 'baseline.qvs.txt' and 'new.qvs.txt'...
+
+--- Content Differences Found (3 total) ---
+Line 139:
+  File1: LET vFields = if(len(trim(Peek('LIMITED FIELDS',$(i),'LIST')))>0,Peek('LIMITED FIELDS',$(i),'LIST'),'*');
+  File2: LET vFields = if(len(trim(Peek('LIMITED FIELDS',$(i),THIS IS A MALICIOUS CHANGE'LIST')))>0,Peek('LIMITED FIELDS',$(i),'LIST'),'*');
+Line 305:
+  File1: 
+  File2: 
+Line 306:
+  File1: 
+  File2: THIS IS A MALICIOUS CHANGE AT THE END OF THE FILE >=)
+
+==================================================
+
+--- File Metadata for SOX Compliance ---
+
+Metadata for 'baseline.qvs.txt':
+  Created Date:    2026-09-23 20:02:49.879464
+  File Size:       8226 bytes
+  MD5 Hash:        fc98a157c2ccec29fd4ce55972b5550d
+
+Metadata for 'new.qvs.txt':
+  Created Date:    2026-09-23 20:02:59.446014
+  File Size:       8309 bytes
+  MD5 Hash:        599943be62aa84fcb451e578b3f500af
+
+==================================================
+
+SOX Compliance Note:
+- 'Modified Date' and 'Created Date' are critical for audit trails and verifying when and how changes occurred.
+- 'File Size' changes also indicate content modification.
+- **MD5 Hash** provides a cryptographic fingerprint. If the MD5 hashes of two versions of a file differ, their content is not identical, serving as definitive proof of modification.
